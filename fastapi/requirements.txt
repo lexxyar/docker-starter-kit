@@ -1,0 +1,9 @@
+fastapi
+pdf2image
+python-dotenv
+python-multipart
+uvicorn
+pillow
+starlette
+boto3
+requests

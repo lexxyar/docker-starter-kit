@@ -1,0 +1,12 @@
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12
+  certificates:
+    - certFile: /etc/certs/mydomain.local.crt
+      keyFile: /etc/certs/mydomain.local.key
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/certs/mydomain.local.crt
+        keyFile: /etc/certs/mydomain.local.key

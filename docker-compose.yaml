@@ -1,0 +1,179 @@
+services:
+
+  nginx:
+    container_name: nginx
+    image: nginx:1.27.3
+    restart: unless-stopped
+    volumes:
+      - ./docker/ssl:/etc/nginx/ssl:ro
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/logs:/var/log/nginx
+      - ./laravel:/var/www
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.nginx-https.rule=Host(`lexxsoft.test`)
+      - traefik.http.routers.nginx-https.entrypoints=websecure
+      - traefik.http.routers.nginx-https.tls=true
+      - traefil.http.services.nginx-https.loadbalancer.server.port=80
+    volumes_from:
+      - php
+    networks:
+      - dev
+
+  php:
+    build:
+      context: .
+      dockerfile: ./docker/php.dockerfile
+    container_name: php
+    restart: unless-stopped
+    user: ${PHP_UID}:${PHP_GID}
+    expose:
+      - 9000
+    volumes:
+      - ./laravel:/var/www
+    depends_on:
+      - db
+    networks:
+      - dev
+
+  supervisor:
+    build:
+      context: .
+      dockerfile: ./docker/supervisor.dockerfile
+    container_name: supervisor
+    volumes:
+      - ./laravel:/var/www
+    depends_on:
+      - php
+      - db
+    networks:
+      - dev
+
+  db:
+    image: mariadb:11.6.2
+    container_name: db
+    restart: unless-stopped
+    tty: true
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./docker/mysql:/var/lib/mysql
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    networks:
+      - dev
+
+  fastapi:
+    build:
+      context: .
+      dockerfile: ./docker/fastapi.dockerfile
+    container_name: fastapi
+    # Uncomment to make http requests directly to server
+    ports:
+      - "7080:7000"
+    expose:
+      - 7000
+    volumes:
+      - ./fastapi:/app-fastapi
+      - /etc/localtime:/etc/localtime
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fastapi.rule=Host(`fastapi.lexxsoft.test`)"
+      - "traefik.http.services.fastapi.loadbalancer.server.port=7000"
+    networks:
+      - dev
+
+  mailpit:
+    image: axllent/mailpit:v1.22
+    container_name: mailpit
+    volumes:
+      - ./docker/mailpit:/maildir
+    ports:
+      - "8025:8025"
+      # - "1025:1025"
+    networks:
+      - dev
+
+  phpmyadmin:
+    image: phpmyadmin:5.2.2
+    container_name: phpmyadmin
+    restart: always
+    depends_on:
+      - db
+      - php
+    ports:
+      - "8090:80"
+    links:
+      - db:db
+    environment:
+      - PMA_ARBITRARY=1
+      - PMA_HOST=db
+    networks:
+      - dev
+
+  redis:
+    image: redis:7.4.1-alpine
+    container_name: redis
+    volumes:
+      - ./docker/redis:/data
+      # ports:
+      # - "6379:6379"
+    restart: always
+    command: redis-server --appendonly yes --requirepass "${REDIS_PASSWORD}"
+    networks:
+      - dev
+
+  s3:
+    image: minio/minio:RELEASE.2025-02-03T21-03-04Z
+    container_name: s3
+    command: server --address ":9002" --console-address ":9001" /data/
+    ports:
+      - "9002:9002"
+      - "9001:9001"
+    environment:
+      # MINIO_SERVER_URL: https://subdomain.example.net/
+      MINIO_ROOT_USER: ${MINO_S3_USERNAME}
+      MINIO_ROOT_PASSWORD: ${MINO_S3_PASSWORD}
+    volumes:
+      - ./docker/s3:/data
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9002/minio/health/live" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.s3.rule=Host(`storage.lexxsoft.test`)"
+      - "traefik.http.services.s3.loadbalancer.server.port=9002"
+    networks:
+      - dev
+
+  traefik:
+    image: traefik:3.2.1
+    container_name: traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/ssl:/etc/certs:ro
+      - ./docker/traefik:/etc/traefik:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.lexxsoft.test`)"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.services.traefik.loadbalancer.server.port=8080"
+    restart: unless-stopped
+    networks:
+      - dev
+
+networks:
+  dev:
+    external: true
