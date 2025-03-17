@@ -3,5 +3,7 @@ redis
 mailpit
 mysql
 s3
-ssl
+ssl/**/*.crt
+ssl/**/*.key
+ssl/**/*.pem
 .DS_Store
