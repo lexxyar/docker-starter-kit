@@ -1,0 +1,4 @@
+*
+!.gitignore
+!mydomain.local.crt
+!mydomain.local.key
